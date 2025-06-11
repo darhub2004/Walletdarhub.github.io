@@ -1,0 +1,139 @@
+<!DOCTYPE html><html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multi-Chain Web Wallet</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bip39@3.0.4/dist/index.browser.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bip32@2.0.6/src/index.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 20px;
+      }
+      input, select, button {
+        margin: 5px;
+        padding: 8px;
+        border-radius: 5px;
+      }
+      .chain-section {
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Multi-Chain Web Wallet</h1>
+    <button onclick="generateWallet()">Generate Wallet</button>
+    <input type="text" id="importSeed" placeholder="Enter seed phrase" size="60" />
+    <button onclick="handleImport()">Import Wallet</button><div id="mnemonic"></div>
+<div id="wallets"></div>
+<div id="transaction"></div>
+
+<script>
+  const derivationPaths = {
+    Ethereum: "m/44'/60'/0'/0/0",
+    BSC: "m/44'/60'/0'/0/0",
+    Polygon: "m/44'/60'/0'/0/0",
+    Arbitrum: "m/44'/60'/0'/0/0",
+    Optimism: "m/44'/60'/0'/0/0",
+    Avalanche: "m/44'/60'/0'/0/0",
+  };
+
+  const rpcUrls = {
+    Ethereum: "https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID",
+    BSC: "https://bsc-dataseed.binance.org/",
+    Polygon: "https://polygon-rpc.com/",
+    Arbitrum: "https://arb1.arbitrum.io/rpc",
+    Optimism: "https://mainnet.optimism.io",
+    Avalanche: "https://api.avax.network/ext/bc/C/rpc",
+  };
+
+  const tokenList = {
+    Ethereum: [
+      { symbol: "USDT", address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 },
+    ],
+    BSC: [
+      { symbol: "BUSD", address: "0xe9e7cea3dedca5984780bafc599bd69add087d56", decimals: 18 },
+    ],
+    Polygon: [
+      { symbol: "USDC", address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", decimals: 6 },
+    ],
+    Arbitrum: [
+      { symbol: "USDC", address: "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8", decimals: 6 },
+    ],
+    Optimism: [
+      { symbol: "USDC", address: "0x7F5c764cBc14f9669B88837ca1490cCa17c31607", decimals: 6 },
+    ],
+    Avalanche: [
+      { symbol: "USDC", address: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", decimals: 6 },
+    ],
+  };
+
+  let wallets = {}, mnemonic = "";
+
+  async function generateWallet(seedOverride = null) {
+    const bip39Lib = window.bip39;
+    const seed = seedOverride || bip39Lib.generateMnemonic();
+    const seedBuffer = await bip39Lib.mnemonicToSeed(seed);
+    const root = window.bip32.fromSeed(seedBuffer);
+    wallets = {};
+
+    for (let chain in derivationPaths) {
+      const child = root.derivePath(derivationPaths[chain]);
+      const wallet = new ethers.Wallet(child.privateKey);
+      wallets[chain] = wallet;
+    }
+
+    mnemonic = seed;
+    document.getElementById("mnemonic").innerHTML = `<h3>Seed Phrase</h3><p>${seed}</p>`;
+    await displayWallets();
+  }
+
+  function handleImport() {
+    const seed = document.getElementById("importSeed").value;
+    if (window.bip39.validateMnemonic(seed)) {
+      generateWallet(seed);
+    } else {
+      alert("Invalid seed phrase");
+    }
+  }
+
+  async function displayWallets() {
+    let html = "";
+    for (let chain in wallets) {
+      const provider = new ethers.providers.JsonRpcProvider(rpcUrls[chain]);
+      const address = wallets[chain].address;
+      let balance = "...", tokens = "";
+
+      try {
+        balance = await provider.getBalance(address);
+        balance = ethers.utils.formatEther(balance);
+      } catch (err) {
+        balance = "Error";
+      }
+
+      const tokensForChain = tokenList[chain] || [];
+      for (let token of tokensForChain) {
+        try {
+          const contract = new ethers.Contract(token.address, ["function balanceOf(address) view returns (uint256)"], provider);
+          const tokenBal = await contract.balanceOf(address);
+          const formatted = ethers.utils.formatUnits(tokenBal, token.decimals);
+          tokens += `<li>${token.symbol}: ${formatted}</li>`;
+        } catch (err) {
+          tokens += `<li>${token.symbol}: Error</li>`;
+        }
+      }
+
+      html += `<div class='chain-section'>
+        <h4>${chain}</h4>
+        <p><strong>Address:</strong> ${address}</p>
+        <p><strong>Balance:</strong> ${balance} (${chain === 'BSC' ? 'BNB' : chain === 'Polygon' ? 'MATIC' : chain === 'Avalanche' ? 'AVAX' : 'ETH'})</p>
+        <ul>${tokens}</ul>
+      </div>`;
+    }
+    document.getElementById("wallets").innerHTML = html;
+  }
+</script>
+
+  </body>
+</html>
